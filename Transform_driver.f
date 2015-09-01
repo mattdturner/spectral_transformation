@@ -298,6 +298,13 @@
 
       End Do
 
+      if ( rank == 0 ) then
+      Write(*,*) 'start_lat = ', start_lat(0)
+      Write(*,*) 'end_lat = ', end_lat(0)
+      Write(*,*) 'start_lon = ', start_lon(0)
+      Write(*,*) 'end_lon = ', end_lon(0)
+      end if
+
       ! Allocate FFT_Array (based on grid on this processor)
       !   FFT Array will have all lon and subset of lat / Z
       Allocate (FFT_Array(End_lat(Rank)-Start_lat(Rank)+1,lon,
