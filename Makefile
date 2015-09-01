@@ -31,4 +31,4 @@ $(MODEL): $(OBJS)
 	$(FC) -c $(F_FLAGS) $<
 
 clean:
-	rm -f *.o *.mod $(MODEL)
+	rm -f *.o *genmod* *.mod $(MODEL)
