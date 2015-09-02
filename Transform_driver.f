@@ -40,23 +40,25 @@
       Integer :: Lat_per_proc  ! Number of latitude cells per processor
       Integer :: Lon_per_proc  ! Number of longitude cells per processor
       Integer :: Z_per_proc    ! Number of Z cells per processor
-      Integer :: Leg_per_proc    ! Number of lon cells per processor for
+      Integer :: Zonal_per_proc    ! Number of lon cells per processor for
                                  !   legendre space
-      Integer :: Spectral_Lat_per_proc  ! Number of latitude cells per processor for spectral
+      Integer :: Total_per_proc  ! Number of latitude cells per processor for spectral
       Integer :: Rem_lat       ! Number of leftover latitude cells after
                                !   integer division
       Integer :: Rem_lon       ! Number of leftover longitude cells after
                                !   integer division
       Integer :: Rem_Z         ! Number of leftover Z cells after
                                !   integer division
-      Integer :: Rem_Leg       ! Number of leftover longitude cells after
+      Integer :: Rem_Zonal       ! Number of leftover longitude cells after
                                !   integer division for legendre space
-      Integer :: Rem_Spectral_lat  ! Number of leftover latitude cells after
+      Integer :: Rem_total  ! Number of leftover latitude cells after
                                !   integer division for spectral 
 
       Real( 8 ), Allocatable :: Full_Grid(:,:,:)   ! Dummy variable for data
       Real( 8 ), Allocatable :: Grid_Array(:,:,:)   ! Dummy variable for data
+      Real( 8 ), Allocatable :: Pre_FFT_Array(:,:,:)   ! Dummy variable for data
       Real( 8 ), Allocatable :: FFT_Array(:,:,:)   ! Dummy variable for data
+      Real( 8 ), Allocatable :: Pre_Legendre_Array(:,:,:)   ! Dummy variable for data
       Real( 8 ), Allocatable :: Legendre_Array(:,:,:)   ! Dummy variable for data
       Real( 8 ), Allocatable :: Spectral_Array(:,:,:)   ! Dummy variable for data
       Real, Allocatable :: asig(:), bsig(:), alat(:)
@@ -72,10 +74,10 @@
       
       ! Interface
       Interface
-         Subroutine Grid_to_FFT(Grid_Array, FFT_Array)
+         Subroutine Grid_to_FFT(Grid_Array, Pre_FFT_Array)
             Implicit None
             Real( 8 ), Intent(In)    :: Grid_Array(:,:,:)
-            Real( 8 ), Intent(InOut) :: FFT_Array(:,:,:)
+            Real( 8 ), Intent(InOut) :: Pre_FFT_Array(:,:,:)
          End Subroutine Grid_to_FFT
          Subroutine FFT_to_Legendre(FFT_Array, Legendre_Array)
             Implicit None
@@ -113,11 +115,14 @@
 
       ! Read in domain file
       Open(Unit = 10, File = 
-     &     '/home/mturner/Transform/noggeom_full.txt',
+     &     '/home/mturner/Transform/noggeom_thinned.txt',
      &     Status = 'Old', Action = 'Read')
       read(10,'(a80)') ! Skip 1st line
       ! Read in latitude, max_lon, levels
       read(10,'(4i10)') lon,lat,Z !, num_points
+
+      zonal_waves = lon / 2
+      total_waves = ( lon / 3 ) - 1
 
       ! Allocate variables to be read from domain file
       Allocate (asig(Z+1), 
@@ -192,8 +197,12 @@
       DO k = 1, Z
          Do i = 1, lat
             Do j = 1, lon
-               cell_counter = cell_counter + 1
-               Full_Grid(i,j,k) = cell_counter
+               If ( j <= lix(i) ) Then
+                  cell_counter = cell_counter + 1
+                  Full_Grid(i,j,k) = cell_counter
+               Else
+                  Full_Grid(i,j,k) = -999
+               End If
             End Do
          End Do
       End Do
@@ -205,10 +214,10 @@
       Rem_lon = Mod(lon,Num_Procs_Col)
       Z_per_proc = Z / Num_Procs_Col
       Rem_Z = Mod(Z,Num_Procs_Col)
-      Leg_per_proc = lon / Num_Procs_Row
-      Rem_Leg = Mod(lon,Num_Procs_Row)
-      Spectral_Lat_per_proc = lat / Num_Procs_Col
-      Rem_Spectral_Lat = Mod(lat,Num_Procs_Col)
+      Zonal_per_proc = lon / (2 * Num_Procs_Row)
+      Rem_Zonal = Mod(lon,2 * Num_Procs_Row)
+      Total_per_proc = (lon / 3 - 1) / Num_Procs_Col
+      Rem_total = Mod((lon / 3 - 1),Num_Procs_Col)
 
       Do i = 1, Num_Procs_Row
          If ( i <= Rem_lat ) Then
@@ -235,18 +244,18 @@
       End Do
 
       Do j = 1, Num_Procs_Row
-         If ( j <= Rem_Leg ) Then
-            Leg_on_proc(j) = Leg_per_proc + 1
+         If ( j <= Rem_Zonal ) Then
+            Zonal_on_proc(j) = Zonal_per_proc + 1
          Else
-            Leg_on_proc(j) = Leg_per_proc
+            Zonal_on_proc(j) = Zonal_per_proc
          End If
       End Do
 
       Do j = 1, Num_Procs_Col
-         If ( j <= Rem_Spectral_lat ) Then
-            Spectral_Lat_on_proc(j) = Spectral_Lat_per_proc + 1
+         If ( j <= Rem_total ) Then
+            Total_on_proc(j) = Total_per_proc + 1
          Else
-            Spectral_Lat_on_proc(j) = Spectral_Lat_per_proc
+            Total_on_proc(j) = Total_per_proc
          End If
       End Do
 
@@ -261,9 +270,9 @@
             End_lon(proc_index-1) = Lon_on_proc(tmp_index)
             Start_Z(proc_index-1) = 1
             End_Z(proc_index-1) = Z_on_proc(tmp_index)
-            Start_lat_spectral(proc_index-1) = 1
-            End_lat_spectral(proc_index-1) =
-     &                       Spectral_Lat_on_proc(tmp_index)
+            Start_total(proc_index-1) = 1
+            End_total(proc_index-1) =
+     &                       Total_on_proc(tmp_index)
          Else
             Start_lon(proc_index-1) = End_lon(proc_index-2) + 1
             End_lon(proc_index-1) = End_lon(proc_index-2) + 
@@ -271,11 +280,11 @@
             Start_Z(proc_index-1) = End_Z(proc_index-2) + 1
             End_Z(proc_index-1) = End_Z(proc_index-2) +
      &                            Z_on_proc(tmp_index)
-            Start_lat_spectral(proc_index-1) =
-     &                         End_lat_spectral(proc_index-2) + 1
-            End_lat_spectral(proc_index-1) =
-     &                         End_lat_spectral(proc_index-2) + 
-     &                         Spectral_Lat_on_proc(tmp_index)
+            Start_total(proc_index-1) =
+     &                         End_total(proc_index-2) + 1
+            End_total(proc_index-1) =
+     &                         End_total(proc_index-2) + 
+     &                         Total_on_proc(tmp_index)
          End If
 
          tmp_index = (proc_index - 1) / Num_Procs_Col + 1
@@ -283,28 +292,28 @@
          If ( proc_index <= Num_Procs_Col ) Then
             Start_lat(proc_index-1) = 1
             End_lat(proc_index-1) = Lat_on_proc(tmp_index)
-            Start_leg(proc_index-1) = 1
-            End_leg(proc_index-1) = Leg_on_proc(tmp_index)
+            Start_zonal(proc_index-1) = 1
+            End_zonal(proc_index-1) = Zonal_on_proc(tmp_index)
          Else
             Start_lat(proc_index-1) = End_lat(proc_index-Num_Procs_Col-1) 
      &                            + 1
             End_lat(proc_index-1)   = End_lat(proc_index-Num_Procs_Col-1) 
      &                            + Lat_on_proc(tmp_index)
-            Start_leg(proc_index-1) = End_leg(proc_index-Num_Procs_Col-1) 
+            Start_zonal(proc_index-1) = End_zonal(proc_index-Num_Procs_Col-1) 
      &                            + 1
-            End_leg(proc_index-1)   = End_leg(proc_index-Num_Procs_Col-1) 
-     &                            + Leg_on_proc(tmp_index)
+            End_zonal(proc_index-1)   = End_zonal(proc_index-Num_Procs_Col-1) 
+     &                            + Zonal_on_proc(tmp_index)
          End If
 
       End Do
 
-      ! Allocate FFT_Array (based on grid on this processor)
+      ! Allocate Pre_FFT_Array (based on grid on this processor)
       !   FFT Array will have all lon and subset of lat / Z
-      Allocate (FFT_Array(End_lat(Rank)-Start_lat(Rank)+1,lon,
+      Allocate (Pre_FFT_Array(End_lat(Rank)-Start_lat(Rank)+1,lon,
      &                    End_Z(Rank)-Start_Z(Rank)+1),
      &           Stat = Astat )
       If ( Astat /= 0 ) Then
-         Msg = 'Error allocating FFT_Array in '
+         Msg = 'Error allocating Pre-FFT_Array in '
          Call alloc_status(Msg, ProcessName)
       End If
 
@@ -325,33 +334,69 @@
          Call alloc_status(Msg, ProcessName)
       End If
 
+      Grid_Array = Full_Grid(Start_lat(Rank):End_lat(Rank),
+     &                           Start_lon(Rank):End_lon(Rank),:)
+      if ( rank == drank ) then
+         write(*,*) 'max(grd) = ', maxval(Grid_Array(:,:,1))
+      end if
+
+      If ( Rank == dRank ) then
+         write(*,*) 'Full_grid(1,34:40,1) = ', Full_Grid(1,34:40,1)
+      End if
+
       ! Transform the data from Grid space to FFT space
       Call Grid_to_FFT(Full_Grid(Start_lat(Rank):End_lat(Rank), 
      &                           Start_lon(Rank):End_lon(Rank),:),
-     &                 FFT_Array)
+     &                 Pre_FFT_Array)
+
+      ! Data is now in a form where FFT can be performed.
+      ! Call FFT(...)
+      ! Data should now be in (lat,m,Z), i.e. lon converted to m
+
+      ! Allocate FFT_Array (based on grid on this processor)
+      !   FFT Array will have all lon and subset of lat / Z
+      Allocate (FFT_Array(End_lat(Rank)-Start_lat(Rank)+1,lon/2,
+     &                    End_Z(Rank)-Start_Z(Rank)+1),
+     &           Stat = Astat )
+      If ( Astat /= 0 ) Then
+         Msg = 'Error allocating FFT_Array in '
+         Call alloc_status(Msg, ProcessName)
+      End If
 
 ! FFT to Legendre
 
-      ! Allocate Legendre_Array (based on grid on this processor)
-      !   Legendre Array will have all lat and subset of lon / Z
-      Allocate (Legendre_Array(lat,End_leg(Rank)-Start_leg(Rank)+1,
+      ! Allocate Pre_Legendre_Array (based on grid on this processor)
+      !   Pre_Legendre Array will have all lat and subset of lon / Z
+      Allocate (Pre_Legendre_Array(lat,End_zonal(Rank)-Start_zonal(Rank)+1,
      &                    End_Z(Rank)-Start_Z(Rank)+1),
+     &           Stat = Astat )
+      If ( Astat /= 0 ) Then
+         Msg = 'Error allocating Pre_Legendre_Array in '
+         Call alloc_status(Msg, ProcessName)
+      End If
+
+      ! Transform the data from FFT space to Legendre space
+      Call FFT_to_Legendre(FFT_Array, Pre_Legendre_Array)
+
+      ! Data is now in a form where Legendre Transform can be performed.
+      ! Call Legendre(...)
+      ! Data should now be in (n,m,Z), i.e. lat converted to n
+      Allocate(Legendre_Array((lon / 3) - 1,
+     &                        End_zonal(Rank)-Start_zonal(Rank)+1,
+     &                        End_Z(Rank)-Start_Z(Rank)+1),
      &           Stat = Astat )
       If ( Astat /= 0 ) Then
          Msg = 'Error allocating Legendre_Array in '
          Call alloc_status(Msg, ProcessName)
       End If
 
-      ! Transform the data from FFT space to Legendre space
-      Call FFT_to_Legendre(FFT_Array, Legendre_Array)
-
 ! Legendre to Spectral
 
       ! Allocate Spectral_Array (based on grid on this processor)
       !   Spectral Array will have all Z and subset of lat / lon
-      Allocate (Spectral_Array(End_lat_spectral(Rank) - 
-     &                    Start_lat_spectral(Rank)+1,
-     &                    End_leg(Rank)-Start_leg(Rank)+1,
+      Allocate (Spectral_Array(End_total(Rank) - 
+     &                    Start_total(Rank)+1,
+     &                    End_zonal(Rank)-Start_zonal(Rank)+1,
      &                    Z),
      &           Stat = Astat )
       If ( Astat /= 0 ) Then
@@ -362,14 +407,22 @@
       ! Transform the data from Legendre space to Spectral space
       Call Legendre_to_Spectral(Legendre_Array,Spectral_Array)
 
+! Do spectral calculations
+
       ! Transform the data from Spectral space back to Legendre space
       Call Spectral_to_Legendre(Spectral_Array,Legendre_Array)
 
+! Perform inverse Legendre (from n, m, z to lat, m, z)
+
       ! Transform the data from Legendre space back to FFT space
-      Call Legendre_to_FFT(Legendre_Array,FFT_Array)
+      Call Legendre_to_FFT(Pre_Legendre_Array,FFT_Array)
+
+! Perform inverse FFT (from lat, m, z to lat, lon, z)
 
       ! Transform the data from FFT space back to Grid space
-      Call FFT_to_Grid(FFT_Array,Grid_Array)
+      Call FFT_to_Grid(Pre_FFT_Array,Grid_Array)
+
+! Perform grid processes
 
 ! Finalize MPI Processes
 

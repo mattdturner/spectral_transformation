@@ -86,8 +86,8 @@
          ! Define starting and ending lat/lon/z for the sending process
          Start_lat_send = Start_lat(MPI_Ind(j))
          End_lat_send = End_lat(MPI_Ind(j))
-         Start_lon_send = Start_leg(MPI_Ind(j))
-         End_lon_send = End_leg(MPI_Ind(j))
+         Start_lon_send = Start_zonal(MPI_Ind(j))
+         End_lon_send = End_zonal(MPI_Ind(j))
          Start_Z_send = Start_Z(MPI_Ind(j))
          End_Z_send = End_Z(MPI_Ind(j))
 
@@ -104,8 +104,8 @@
                If ( Rank /= MPI_Ind(proc) ) Then
                   ! Calculate the starting and ending z of the receiving
                   ! process
-                  Start_lon_recv = Start_leg(MPI_Ind(proc))
-                  End_lon_recv = End_leg(MPI_Ind(proc))
+                  Start_lon_recv = Start_zonal(MPI_Ind(proc))
+                  End_lon_recv = End_zonal(MPI_Ind(proc))
 
                   ! Calculate the number of bytes to send (for MPI_SEND)
                   count =  (End_lat_send - Start_lat_send + 1) *
@@ -151,8 +151,8 @@
             ! receiving process
             Start_lat_recv = Start_lat(Rank)
             End_lat_recv = End_lat(Rank)
-            Start_lon_recv = Start_leg(Rank)
-            End_lon_recv = End_leg(Rank)
+            Start_lon_recv = Start_zonal(Rank)
+            End_lon_recv = End_zonal(Rank)
             Start_Z_recv = Start_Z(Rank)
             End_Z_recv = End_Z(Rank)
 
